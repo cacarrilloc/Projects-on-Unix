@@ -1,0 +1,246 @@
+#!/bin/bash
+# CARLOS CARRILLO-CALDERON
+# PROGRAM 1
+# OSU-CS_344
+# 06/25/2016
+
+# DESCRIPTION: This is a Bourne shell script to calculate averages and medians from an input file of numbers. The script is able to calculate the average and median across the rows or down the columns.
+
+#####################################################################
+# Variable Definition                                               #
+#####################################################################
+
+# Variables
+inputFile=""  # input file
+bufferFile="" # hold the inputFile contents
+average=0     # store average
+median=0      # store middle element
+averages=()   # array to store the averages
+means=()      # array to store the means
+correctionFactor=0 #round up the average if needed.
+
+# Temporary File
+tempInputFile=$$_temp
+
+# Constants to set exit values
+FAIL_EXIT=1
+SUCCESS_EXIT=0
+
+#####################################################################
+# Functions                                                         #
+#####################################################################
+
+# Function to process calculations over rows
+rowFunction(){
+
+    # Print headers
+    printf "Average\tMedian\n"
+
+	while read line 
+	do
+		# Description: 'echo' prints the line. 'expand' replaces all tabs with
+		# spaces. 'tr' translates all spaces to newlines. 'sed' removes empty
+		# lines. 'sort' sorts numerically. 'tr' translates newlines to spaces.
+		sortLine=$(echo "$line" | expand | tr ' ' '\n' | sed '/^$/d' | sort -n | tr '\n' ' ')
+
+        # The information corresponding to arrays to make the next lines of code was taken from: http://www.thegeekstuff.com/2010/06/bash-array-tutorial/?utm_source=feedburner&utm_medium=feed&utm_campaign=Feed%3A+TheGeekStuff+(The+Geek+Stuff)
+
+		# Create an array to store the line just processed and sorted.
+		arrayLine=($sortLine)
+
+		# Use 'sed' to transform the sorted line into an expresion in
+        # which each space is replaced by '+' to do the average calculation.
+		sumLine=$(echo $sortLine | sed 's/ / + /g')
+
+		# Get the length of each line.
+		lineLength=${#arrayLine[@]}
+
+        # Get the index of the element that is in the middle of the line.
+        # If there's an even number of elements, the larger of the two
+        # middle values is taken.
+		middleElementIndex=$(expr $lineLength / 2)
+
+		# Correction factor to round up the average if needed.
+		correctionFactor=$(expr \( $lineLength \) / 2 )
+
+        # Median: it is the element in the middle of the array.
+		median=${arrayLine[$middleElementIndex]}
+
+		# Average: sum of the elements divided by the number of elements.
+		average=$(expr \( $sumLine + $correctionFactor \) / $lineLength)
+
+        # Print average and median results.
+		printf "$average\t$median\n"
+
+	done < "$inputFile"
+};
+
+#####################################################################
+
+# Function to process calculations over columns
+columnFunction(){
+
+	# Loop to read the input file line by line to fill up a buffer file.
+    # This guarantees the inputFile can be properly processed.
+	while read line 
+	do
+		# read line and store it in the correct format.
+		bufferFile+=$line
+		bufferFile+=$'\n'
+
+    done < "$inputFile"
+
+	# Store the first line into an array in order to find how many
+    # columns the input file has by using the 'head' command.
+	columnsNumArray=($(printf "%s\n" "$bufferFile" | head -1))
+
+    # The information corresponding to arrays to make the next lines of code was taken from: http://www.thegeekstuff.com/2010/06/bash-array-tutorial/?utm_source=feedburner&utm_medium=feed&utm_campaign=Feed%3A+TheGeekStuff+(The+Geek+Stuff)
+
+	# Get the length of the first line by evaluating columnsNumArray
+	# in order to determine the number of columns to be cut.
+	numberOfColumns=${#columnsNumArray[@]}
+
+	# First, make sure the inputFile is not empty. If so, the program will
+    # display no averages nor medians and be terminated.
+	if [[ $numberOfColumns == 0 ]]
+	then
+		echo Averages:
+		printf "\n"
+		echo Medians:
+		printf "\n"
+		exit $SUCCESS_EXIT # Terminate program
+	fi
+
+	# Loop to iterate over each row and cut on the row element indicated by
+    # the index. So it will first cut the first element of each row, then
+    # the second one and so on. This way, we can store the input values by
+    # columns and properly make the desired calculations.
+	for index in $(seq 1 $numberOfColumns) # From 1 n number of rows
+	do
+		# Cut each row at the index'th element, make a column, sort it,
+        # and translate it into a newline.
+		colValues=$(printf "%s\n" "$bufferFile"|cut -f $index|sort -n|tr '\n' ' ')
+
+        # Store the column values into an array.
+		colValArray=($colValues)
+
+		# Find the array index corresponding to the middle element
+        # in order to get the median.
+		middleElementIndex=$(expr ${#colValArray[@]} / 2)
+
+		# Build a string to calculate the sum of the numbers.
+        # Use 'sed' to substitute spaces with '+'.
+		sum=$(echo $colValues | sed 's/ / + /g')
+
+        # Correction factor to round up the average if needed.
+		correctionFactor=$(expr \( ${#colValArray[@]} \) / 2 )
+
+		# Average: sum of the elements divided by the number of elements.
+		average=$(expr \( $sum + $correctionFactor \) / ${#colValArray[@]})
+
+		# Median: it is the element in the middle of the array.
+		mean=${colValArray[$middleElementIndex]}
+
+		# Append average and mean values to the result arrays.
+		averages+=($average)
+		means+=($mean)
+	done
+
+	# Display the calculated Averages and Medians stored in the arrays.
+	echo Averages:
+	printf "%s\t" ${averages[@]}
+	printf "\n"
+	echo Medians:
+	printf "%s\t" ${means[@]}
+	printf "\n"
+};
+
+#####################################################################
+
+# Function to create an inputFile. It uses a temporary file.
+createInputFile () {
+
+    # Loop to read the original input file
+	while read line
+	do
+        # Pass values to a temporary input file
+		echo -e "$line" >> $tempInputFile
+
+	done < "${2:-/dev/stdin}" # use $2 OR /dev/stdin if $2 is not defined.
+
+    # Copy to input file
+	inputFile=$tempInputFile
+};
+
+#####################################################################
+
+# Print usage information to stderr. 1>&2 redirects stdout to stderr.
+usage () {
+	echo "Usage: stats {-rows|-cols} [file]" 1>&2
+};
+
+
+#####################################################################
+# MAIN PROGRAM:                                                     #
+#####################################################################
+
+# $# is the number of arguments the script received.
+if [[ $# > 2 ]];
+then
+	usage
+	exit $FAIL_EXIT
+fi
+
+#####################################################################
+
+# Check if the file is not readable or there are too many arguments.
+# -z checks if the $2 variable is set.
+# -r checks if the file exists and is readable.
+if [[ ! -z $2 && ! -r $2 ]];
+then
+	echo "$0: cannot read $2" 1>&2
+	exit $FAIL_EXIT
+fi
+
+#####################################################################
+
+# Make sure to first remove any previous tempInputFile using 'trap'.
+trap "rm -rf $tempInputFile; exit 1" INT HUP TERM
+
+# Validate input: Create input file if correct. Show error otherwise.
+if [[ $# == 1 ]];
+then
+    createInputFile
+else
+	if [ ! -r "$2" ] # Check if there's NOT an inputFile argument
+	then
+		usage
+        exit $FAIL_EXIT
+	else
+		inputFile=$2 # If it does, assign 2nd argument to inputFile
+	fi
+fi
+
+#####################################################################
+
+# Check if user wants rows or columns
+if [[ "$1" == -r* ]];
+then
+	rowFunction     # Call function to process rows
+
+elif [[ "$1" == -c* ]];
+then
+	columnFunction  # Call function to process columns
+
+else
+	usage           # Display error otherwise
+	exit $FAIL_EXIT
+fi
+
+#####################################################################
+
+#delete the temp file again (just in case)
+rm -rf $tempInputFile
+
+exit 0
+
